@@ -2,10 +2,13 @@
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace XNodeEditor {
+    public enum NoodlePath { Curvy, Straight, Angled, ShaderLab }
+    public enum NoodleStroke { Full, Dashed }
+
     public static class NodeEditorPreferences {
-        public enum NoodleType { Curve, Line, Angled }
 
         /// <summary> The last editor we checked. This should be the one we modify </summary>
         private static XNodeEditor.NodeGraphEditor lastEditor;
@@ -17,10 +20,10 @@ namespace XNodeEditor {
 
         [System.Serializable]
         public class Settings : ISerializationCallbackReceiver {
-            [SerializeField] private Color32 _gridLineColor = new Color(0.45f, 0.45f, 0.45f);
+            [SerializeField] private Color32 _gridLineColor = new Color(.23f, .23f, .23f);
             public Color32 gridLineColor { get { return _gridLineColor; } set { _gridLineColor = value; _gridTexture = null; _crossTexture = null; } }
 
-            [SerializeField] private Color32 _gridBgColor = new Color(0.18f, 0.18f, 0.18f);
+            [SerializeField] private Color32 _gridBgColor = new Color(.19f, .19f, .19f);
             public Color32 gridBgColor { get { return _gridBgColor; } set { _gridBgColor = value; _gridTexture = null; } }
 
             [Obsolete("Use maxZoom instead")]
@@ -29,14 +32,22 @@ namespace XNodeEditor {
             [UnityEngine.Serialization.FormerlySerializedAs("zoomOutLimit")]
             public float maxZoom = 5f;
             public float minZoom = 1f;
+            public Color32 tintColor = new Color32(90, 97, 105, 255);
             public Color32 highlightColor = new Color32(255, 255, 255, 255);
             public bool gridSnap = true;
             public bool autoSave = true;
+            public bool openOnCreate = true;
+            public bool dragToCreate = true;
+            public bool createFilter = true;
             public bool zoomToMouse = true;
             public bool portTooltips = true;
+            public bool themeResetButton;
             [SerializeField] private string typeColorsData = "";
             [NonSerialized] public Dictionary<string, Color> typeColors = new Dictionary<string, Color>();
-            public NoodleType noodleType = NoodleType.Curve;
+            [FormerlySerializedAs("noodleType")] public NoodlePath noodlePath = NoodlePath.Curvy;
+            public float noodleThickness = 2f;
+
+            public NoodleStroke noodleStroke = NoodleStroke.Full;
 
             private Texture2D _gridTexture;
             public Texture2D gridTexture {
@@ -51,6 +62,16 @@ namespace XNodeEditor {
                     if (_crossTexture == null) _crossTexture = NodeEditorResources.GenerateCrossTexture(gridLineColor);
                     return _crossTexture;
                 }
+            }
+            public XNode.Theme _theme;
+            public XNode.Theme theme {
+                get { 
+                    if(_theme != null)
+                        return _theme;
+                    else
+                        return Resources.Load<XNode.Theme>("DefualtXNodeTheme");
+                }
+                set { _theme = value;}
             }
 
             public void OnAfterDeserialize() {
@@ -76,6 +97,8 @@ namespace XNodeEditor {
 
         /// <summary> Get settings of current active editor </summary>
         public static Settings GetSettings() {
+            if (XNodeEditor.NodeEditorWindow.current == null) return new Settings();
+
             if (lastEditor != XNodeEditor.NodeEditorWindow.current.graphEditor) {
                 object[] attribs = XNodeEditor.NodeEditorWindow.current.graphEditor.GetType().GetCustomAttributes(typeof(XNodeEditor.NodeGraphEditor.CustomNodeGraphEditorAttribute), true);
                 if (attribs.Length == 1) {
@@ -106,10 +129,15 @@ namespace XNodeEditor {
             VerifyLoaded();
             Settings settings = NodeEditorPreferences.settings[lastKey];
 
+            if (GUILayout.Button(new GUIContent("Documentation", "https://github.com/Siccity/xNode/wiki"), GUILayout.Width(100))) Application.OpenURL("https://github.com/Siccity/xNode/wiki");
+            EditorGUILayout.Space();
+
+            ThemeSettings(lastKey, settings);
             NodeSettingsGUI(lastKey, settings);
             GridSettingsGUI(lastKey, settings);
             SystemSettingsGUI(lastKey, settings);
             TypeColorsGUI(lastKey, settings);
+            
             if (GUILayout.Button(new GUIContent("Set Default", "Reset all values to default"), GUILayout.Width(120))) {
                 ResetPrefs();
             }
@@ -125,8 +153,7 @@ namespace XNodeEditor {
             settings.maxZoom = EditorGUILayout.FloatField(new GUIContent("Max", "Upper limit to zoom"), settings.maxZoom);
             settings.minZoom = EditorGUILayout.FloatField(new GUIContent("Min", "Lower limit to zoom"), settings.minZoom);
             EditorGUI.indentLevel--;
-            settings.gridLineColor = EditorGUILayout.ColorField("Color", settings.gridLineColor);
-            settings.gridBgColor = EditorGUILayout.ColorField(" ", settings.gridBgColor);
+            //
             if (GUI.changed) {
                 SavePrefs(key, settings);
 
@@ -139,6 +166,7 @@ namespace XNodeEditor {
             //Label
             EditorGUILayout.LabelField("System", EditorStyles.boldLabel);
             settings.autoSave = EditorGUILayout.Toggle(new GUIContent("Autosave", "Disable for better editor performance"), settings.autoSave);
+            settings.openOnCreate = EditorGUILayout.Toggle(new GUIContent("Open Editor on Create", "Disable to prevent openening the editor when creating a new graph"), settings.openOnCreate);
             if (GUI.changed) SavePrefs(key, settings);
             EditorGUILayout.Space();
         }
@@ -146,9 +174,12 @@ namespace XNodeEditor {
         private static void NodeSettingsGUI(string key, Settings settings) {
             //Label
             EditorGUILayout.LabelField("Node", EditorStyles.boldLabel);
-            settings.highlightColor = EditorGUILayout.ColorField("Selection", settings.highlightColor);
-            settings.noodleType = (NoodleType) EditorGUILayout.EnumPopup("Noodle type", (Enum) settings.noodleType);
+            //
             settings.portTooltips = EditorGUILayout.Toggle("Port Tooltips", settings.portTooltips);
+            settings.dragToCreate = EditorGUILayout.Toggle(new GUIContent("Drag to Create", "Drag a port connection anywhere on the grid to create and connect a node"), settings.dragToCreate);
+            settings.createFilter = EditorGUILayout.Toggle(new GUIContent("Create Filter", "Only show nodes that are compatible with the selected port"), settings.createFilter);
+
+            //END
             if (GUI.changed) {
                 SavePrefs(key, settings);
                 NodeEditorWindow.RepaintAll();
@@ -179,6 +210,55 @@ namespace XNodeEditor {
                     NodeEditorWindow.RepaintAll();
                 }
             }
+        }
+        private static void ThemeSettings (string key, Settings settings) 
+        {
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Theme", EditorStyles.boldLabel);
+            if(GUILayout.Button("Create New", GUILayout.Width(90)))
+            {
+                XNode.Theme theme = ScriptableObject.CreateInstance<XNode.Theme>();
+                //AssetDatabase.CreateAsset(theme, GetSelectedPathOrFallback());
+                System.Reflection.MethodInfo getActiveFolderPath = typeof(ProjectWindowUtil).GetMethod(
+                "GetActiveFolderPath",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            
+                string folderPath = (string) getActiveFolderPath.Invoke(null, null);
+                ProjectWindowUtil.CreateAsset(theme, folderPath + "/New Theme.asset");
+                AssetDatabase.SaveAssets();
+                EditorUtility.FocusProjectWindow();
+                Selection.activeObject = theme;
+            }
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.BeginHorizontal();
+            EditorGUI.BeginChangeCheck();
+            settings.theme = (XNode.Theme) EditorGUILayout.ObjectField(settings.theme, typeof(XNode.Theme), true);
+            if(EditorGUI.EndChangeCheck() && !NodeEditorWindow.justOpened || settings.themeResetButton)
+            {
+               settings.tintColor = settings.theme.tint;
+               settings.highlightColor = settings.theme.selection;
+               settings.noodlePath = settings.theme.noodlePath;
+               settings.noodleThickness = settings.theme.noodleThickness;
+               settings.noodleStroke = settings.theme.noodleStroke;
+               settings.gridLineColor = settings.theme.gridLinesColor;
+               settings.gridBgColor = settings.theme.backgroundColor;
+               NodeEditorResources._dot = settings.theme.xNodeDot;
+               NodeEditorResources._dotOuter = settings.theme.xNodeDotOuter;
+               NodeEditorResources._nodeBody = settings.theme.xNodeNode;
+               NodeEditorResources._nodeHighlight = settings.theme.xNodeNodeHighlight;
+            }
+            settings.themeResetButton = GUILayout.Button("Reset", new GUILayoutOption[] {GUILayout.Width(45)});
+            EditorGUILayout.EndHorizontal();
+            settings.tintColor = EditorGUILayout.ColorField("Tint", settings.tintColor);
+            settings.highlightColor = EditorGUILayout.ColorField("Selection", settings.highlightColor);
+            settings.noodlePath = (NoodlePath) EditorGUILayout.EnumPopup("Noodle path", (Enum) settings.noodlePath);
+            settings.noodleThickness = EditorGUILayout.FloatField(new GUIContent("Noodle thickness", "Noodle Thickness of the node connections"), settings.noodleThickness);
+            settings.noodleStroke = (NoodleStroke) EditorGUILayout.EnumPopup("Noodle stroke", (Enum) settings.noodleStroke);
+            settings.gridLineColor = EditorGUILayout.ColorField("Grid Lines Color", settings.gridLineColor);
+            settings.gridBgColor = EditorGUILayout.ColorField("Grid Background Color", settings.gridBgColor);
+
+            if(GUI.changed) SavePrefs(key, settings);
+            EditorGUILayout.Space();
         }
 
         /// <summary> Load prefs if they exist. Create if they don't </summary>

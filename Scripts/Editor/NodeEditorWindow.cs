@@ -9,6 +9,7 @@ namespace XNodeEditor {
     [InitializeOnLoad]
     public partial class NodeEditorWindow : EditorWindow {
         public static NodeEditorWindow current;
+        public static bool justOpened;
 
         /// <summary> Stores node positions for all nodePorts. </summary>
         public Dictionary<XNode.NodePort, Rect> portConnectionPoints { get { return _portConnectionPoints; } }
@@ -64,6 +65,9 @@ namespace XNodeEditor {
                         _portConnectionPoints.Add(nodePort, _rects[i]);
                 }
             }
+            justOpened = true;
+            /*if(NodeEditorPreferences.GetSettings().theme == null)
+                NodeEditorPreferences.GetSettings().theme = Resources.Load<XNode.Theme>("DefualtXNodeTheme");*/
         }
 
         public Dictionary<XNode.Node, Vector2> nodeSizes { get { return _nodeSizes; } }
@@ -77,7 +81,17 @@ namespace XNodeEditor {
         void OnFocus() {
             current = this;
             ValidateGraphEditor();
-            if (graphEditor != null && NodeEditorPreferences.GetSettings().autoSave) AssetDatabase.SaveAssets();
+            if (graphEditor != null) {
+                graphEditor.OnWindowFocus();
+                if (NodeEditorPreferences.GetSettings().autoSave) AssetDatabase.SaveAssets();
+            }
+            
+            dragThreshold = Math.Max(1f, Screen.width / 1000f);
+            justOpened = false;
+        }
+        
+        void OnLostFocus() {
+            if (graphEditor != null) graphEditor.OnWindowFocusLost();
         }
 
         [InitializeOnLoadMethod]
@@ -90,14 +104,14 @@ namespace XNodeEditor {
         private static void OnSelectionChanged() {
             XNode.NodeGraph nodeGraph = Selection.activeObject as XNode.NodeGraph;
             if (nodeGraph && !AssetDatabase.Contains(nodeGraph)) {
-                Open(nodeGraph);
+                if (NodeEditorPreferences.GetSettings().openOnCreate) Open(nodeGraph);
             }
         }
 
         /// <summary> Make sure the graph editor is assigned and to the right object </summary>
         private void ValidateGraphEditor() {
             NodeGraphEditor graphEditor = NodeGraphEditor.GetEditor(graph, this);
-            if (this.graphEditor != graphEditor) {
+            if (this.graphEditor != graphEditor && graphEditor != null) {
                 this.graphEditor = graphEditor;
                 graphEditor.OnOpen();
             }
@@ -187,12 +201,13 @@ namespace XNodeEditor {
         }
 
         /// <summary>Open the provided graph in the NodeEditor</summary>
-        public static void Open(XNode.NodeGraph graph) {
-            if (!graph) return;
+        public static NodeEditorWindow Open(XNode.NodeGraph graph) {
+            if (!graph) return null;
 
             NodeEditorWindow w = GetWindow(typeof(NodeEditorWindow), false, "xNode", true) as NodeEditorWindow;
             w.wantsMouseMove = true;
             w.graph = graph;
+            return w;
         }
 
         /// <summary> Repaint all open NodeEditorWindows. </summary>

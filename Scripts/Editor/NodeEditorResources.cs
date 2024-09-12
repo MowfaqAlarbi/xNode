@@ -4,21 +4,21 @@ using UnityEngine;
 namespace XNodeEditor {
     public static class NodeEditorResources {
         // Textures
-        public static Texture2D dot { get { return _dot != null ? _dot : _dot = Resources.Load<Texture2D>("xnode_dot"); } }
-        private static Texture2D _dot;
-        public static Texture2D dotOuter { get { return _dotOuter != null ? _dotOuter : _dotOuter = Resources.Load<Texture2D>("xnode_dot_outer"); } }
-        private static Texture2D _dotOuter;
-        public static Texture2D nodeBody { get { return _nodeBody != null ? _nodeBody : _nodeBody = Resources.Load<Texture2D>("xnode_node"); } }
-        private static Texture2D _nodeBody;
-        public static Texture2D nodeHighlight { get { return _nodeHighlight != null ? _nodeHighlight : _nodeHighlight = Resources.Load<Texture2D>("xnode_node_highlight"); } }
-        private static Texture2D _nodeHighlight;
+        public static Texture2D dot { get { return _dot != null ? _dot : _dot = NodeEditorPreferences.GetSettings().theme.xNodeDot; }}
+        public static Texture2D _dot;
+        public static Texture2D dotOuter { get { return _dotOuter != null ? _dotOuter : _dotOuter = NodeEditorPreferences.GetSettings().theme.xNodeDotOuter; }}
+        public static Texture2D _dotOuter;
+        public static Texture2D nodeBody { get { return _nodeBody != null ? _nodeBody : _nodeBody = NodeEditorPreferences.GetSettings().theme.xNodeNode; }}
+        public static Texture2D _nodeBody;
+        public static Texture2D nodeHighlight { get { return _nodeHighlight != null ? _nodeHighlight : _nodeHighlight = NodeEditorPreferences.GetSettings().theme.xNodeNodeHighlight; }}
+        public static Texture2D _nodeHighlight;
 
         // Styles
-        public static Styles styles { get { return _styles != null ? _styles : _styles = new Styles(); } }
+        public static Styles styles { get { return _styles = new Styles(); } }
         public static Styles _styles = null;
         public static GUIStyle OutputPort { get { return new GUIStyle(EditorStyles.label) { alignment = TextAnchor.UpperRight }; } }
         public class Styles {
-            public GUIStyle inputPort, nodeHeader, nodeBody, tooltip, nodeHighlight;
+            public GUIStyle inputPort, outputPort, nodeHeader, nodeBody, tooltip, nodeHighlight;
 
             public Styles() {
                 GUIStyle baseStyle = new GUIStyle("Label");
@@ -26,17 +26,43 @@ namespace XNodeEditor {
 
                 inputPort = new GUIStyle(baseStyle);
                 inputPort.alignment = TextAnchor.UpperLeft;
-                inputPort.padding.left = 10;
+                inputPort.padding.left = 0;
+                if(!NodeEditorPreferences.GetSettings().theme.makeTheDotOuterInfrontOfFill)
+                    {
+                        inputPort.active.background = dot;
+                        inputPort.normal.background = dotOuter;
+                    }
+                else
+                    {
+                        inputPort.normal.background = dot;
+                        inputPort.active.background = dotOuter;
+                    }
+
+                outputPort = new GUIStyle(baseStyle);
+                outputPort.alignment = TextAnchor.UpperRight;
+                outputPort.padding.right = 0;
+                if(!NodeEditorPreferences.GetSettings().theme.makeTheDotOuterInfrontOfFill)
+                {
+                    outputPort.active.background = dot;
+                    outputPort.normal.background = dotOuter;
+                }
+                else
+                {
+                    outputPort.normal.background = dot;
+                    outputPort.active.background = dotOuter;
+                }
 
                 nodeHeader = new GUIStyle();
                 nodeHeader.alignment = TextAnchor.MiddleCenter;
-                nodeHeader.fontStyle = FontStyle.Bold;
-                nodeHeader.normal.textColor = Color.white;
+                nodeHeader.fontStyle = NodeEditorPreferences.GetSettings().theme.headerFontStyle;
+                nodeHeader.normal.textColor = NodeEditorPreferences.GetSettings().theme.headerColor;
+                nodeHeader.font = NodeEditorPreferences.GetSettings().theme.headerFont;
+                nodeHeader.fontSize = NodeEditorPreferences.GetSettings().theme.headerFontSize;
 
                 nodeBody = new GUIStyle();
                 nodeBody.normal.background = NodeEditorResources.nodeBody;
                 nodeBody.border = new RectOffset(32, 32, 32, 32);
-                nodeBody.padding = new RectOffset(16, 16, 4, 16);
+                nodeBody.padding = NodeEditorPreferences.GetSettings().theme.padding;
 
                 nodeHighlight = new GUIStyle();
                 nodeHighlight.normal.background = NodeEditorResources.nodeHighlight;
